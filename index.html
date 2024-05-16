@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flask Search App</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa; /* Light background for the body */
+            color: #212529; /* Darker text color for readability */
+        }
+        
+        .loader {
+            border: 10px solid #f8f9fa; /* Light loader background */
+            border-top: 10px solid #007bff; /* Blue to indicate loading */
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 2s linear infinite;
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            margin-left: -30px; 
+            margin-top: -30px; 
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .card {
+            background-color: #ffffff; /* White background for cards */
+            border-color: #dee2e6; /* Light grey border color for contrast */
+        }
+        
+        .card-header {
+            cursor: pointer; /* Indicates the element is clickable */
+            background-color: #e9ecef; /* Light grey header for differentiation */
+            color: #495057; /* Darker grey text for the header */
+            font-family: 'Lato', sans-serif; /* Sets the font to Lato */
+            font-size: 16px; /* Adjusts the font size */
+            font-weight: 700; /* Makes the font bold */
+            cursor: pointer; /* Changes cursor to pointer on hover */
+            padding: 10px; /* Adds padding inside the header */
+            border-bottom: 0.5px solid #ccc; /* Adds a subtle line below the header */
+        }
+        
+        .card-header:hover {
+            background-color: #dcdcdc; /* Slightly lighter on hover for feedback */
+        }
+        
+        .answer code {
+            background-color: #f4f4f4; /* A light but distinct background for code blocks */
+            color: #333333; /* Dark color for the code text */
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-size: 90%;
+            border: 1px solid #ccc; /* Subtle border around code blocks */
+        }
+        
+        .card-text {
+            color: #666; /* Dark grey for text */
+        }
+        
+        .input-group-text, .form-control {
+            background-color: #fff; /* White input background */
+            color: #495057; /* Dark grey text color */
+            border: 1px solid #ced4da; /* Light border for inputs */
+        }
+        
+        .btn-outline-primary {
+            border-color: #007bff; /* Blue border for buttons */
+            color: #007bff; /* Blue text to match the border */
+        }
+        
+        .btn-outline-primary:hover {
+            background-color: #0056b3; /* Darker blue background on hover */
+            color: #ffffff; /* White text on hover */
+        }
+        
+        .feedback-section {
+            background-color: #e2e6ea; /* Light grey background for the feedback section */
+            color: #333; /* Dark text color */
+            border-radius: 8px; /* Rounded corners */
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow for depth */
+            margin: auto; /* Centering the box */
+            width: 80%; /* Control the width of the feedback box */
+        }
+        
+        .btn-success, .btn-danger {
+            width: 100px; /* Ensure the buttons are of equal width */
+        }
+        
+        .btn-success:hover, .btn-danger:hover {
+            opacity: 0.8; /* Slight transparency on hover for a visual effect */
+        }
+        </style>
+        
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="mb-4">Stack Overflow Similarity Search</h1>
+        <form method="POST" id="searchForm">
+            <div class="input-group mb-3">
+                <input type="text" class="form-control" name="search" placeholder="Enter search term" aria-label="Search term" aria-describedby="button-addon">
+                <div class="input-group-append">
+                    <button class="btn btn-outline-primary" type="submit" id="button-addon">Search</button>
+                </div>
+            </div>
+        </form>
+        <div class="loader hidden" id="loader"></div>
+        <div id="results">
+            {% if results %}
+                {% for result in results %}
+                <div class="card mb-3" id="card{{ loop.index }}">
+                    <div class="card-header" onclick="toggleAnswer({{ loop.index }})">
+                        Question {{ loop.index }}: <b>{{ result.question }}</b>
+                    </div>
+                    <div class="card-body answer hidden" id="answer{{ loop.index }}">
+                        {% if result.answers %}
+                            {% for answer in result.answers %}
+                            <div class="card-text">
+                                <strong>Response {{ loop.index }}:</strong>
+                                {{ answer | remove_newlines | safe }}
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="card-text">No answer.</div>
+                        {% endif %}
+                    </div>
+                </div>                
+                {% endfor %}
+            {% endif %}
+        </div>
+<div id="feedbackForm" class="feedback-section mt-5 py-4 px-3" style="display:none;">
+    <h3 class="text-center mb-3">Was this information helpful?</h3>
+    <form id="feedbackTextForm" onsubmit="submitTextFeedback(event)">
+        <div class="form-group">
+            <textarea class="form-control" id="feedbackText" rows="3" placeholder="Please leave your feedback here..."></textarea>
+        </div>
+        <div class="text-center">
+            <button type="submit" class="btn btn-primary">Submit Feedback</button>
+        </div>
+    </form>
+
+</div>
+
+        
+        
+        
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.2/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <script>
+        document.getElementById('searchForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+            document.getElementById('loader').classList.remove('hidden');
+
+            var formData = new FormData(document.getElementById('searchForm'));
+            fetch(window.location.href, {
+                method: 'POST',
+                body: formData,
+            })
+            .then(response => response.text())
+            .then(html => {
+                var parser = new DOMParser();
+                var doc = parser.parseFromString(html, 'text/html');
+                var resultsElement = document.getElementById('results');
+                var newResults = doc.getElementById('results');
+                if (newResults) {
+                    resultsElement.innerHTML = newResults.innerHTML;
+                } else {
+                    resultsElement.innerHTML = '<p>No results found.</p>';
+                }
+                document.getElementById('loader').classList.add('hidden');
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('results').innerHTML = '<p>Error loading results.</p>';
+                document.getElementById('loader').classList.add('hidden');
+            });
+        });
+        var feedbackShown = false; 
+//Function to Toggler the Answer
+function toggleAnswer(index) {
+    var answerElement = document.getElementById('answer' + index);
+    if (answerElement.classList.contains('hidden')) {
+        answerElement.classList.remove('hidden');
+        if (!feedbackShown) {
+            document.getElementById('feedbackForm').style.display = 'block';
+            feedbackShown = true; 
+        }
+    } else {
+        answerElement.classList.add('hidden');
+    }
+}
+
+//Submit feedback Function 
+
+function submitTextFeedback(event) {
+    event.preventDefault();
+    var feedbackText = document.getElementById('feedbackText').value;
+    fetch(`/feedback-text`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({feedback: feedbackText})
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Update the feedback form to show the thank you message
+        var feedbackForm = document.getElementById('feedbackForm');
+        feedbackForm.innerHTML = '<h3 class="text-center">Your feedback has been received. Thank you!</h3>';
+    })
+    .catch(error => {
+        console.error('Error submitting text feedback:', error);
+        // Optionally handle errors, e.g., showing an error message
+        document.getElementById('feedbackForm').innerHTML = '<h3 class="text-center text-danger">Error submitting feedback. Please try again.</h3>';
+    });
+}
+
+
+
+
+
+    </script>
+</body>
+</html>
